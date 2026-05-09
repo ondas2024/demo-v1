@@ -2,7 +2,7 @@
 # =============================================================================
 # provision-demo-vm.sh — Provision an Azure Linux VM to simulate "on-prem" K3s
 #
-# Purpose: Creates a Standard_B2s Ubuntu 22.04 VM in Azure, installs K3s on it
+# Purpose: Creates a Standard_D2s_v3 Ubuntu 22.04 VM in Azure, installs K3s on it
 #          remotely via az vm run-command, and configures a local kubeconfig so
 #          that setup-arc.sh can connect to the cluster without any manual SSH.
 #
@@ -38,7 +38,7 @@ VM_NAME="${VM_NAME:-arc-demo-vm}"
 RESOURCE_GROUP="${RESOURCE_GROUP:-rg-arc-demo}"
 LOCATION="${LOCATION:-eastus}"
 VM_IMAGE="Ubuntu2204"
-VM_SIZE="Standard_B2s"
+VM_SIZE="${VM_SIZE:-Standard_D2s_v3}"
 VM_ADMIN="azureuser"
 KUBECONFIG_DEST="${HOME}/.kube/arc-demo-config"
 
@@ -169,7 +169,7 @@ az vm run-command invoke \
   --resource-group "${RESOURCE_GROUP}" \
   --name "${VM_NAME}" \
   --command-id RunShellScript \
-  --scripts "curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='--write-kubeconfig-mode 644' sh -" \
+  --scripts "curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='--write-kubeconfig-mode 644 --tls-san ${VM_IP}' sh -" \
   --output none
 
 info "  ✓ K3s installation command sent. Waiting 20 seconds for the node to initialise..."

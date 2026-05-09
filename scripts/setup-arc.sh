@@ -156,7 +156,7 @@ az k8s-configuration flux create \
   --namespace flux-system \
   --scope cluster \
   --url "${REPO_URL}" \
-  --branch main \
+  --branch master \
   --kustomization name=demo-app path=./gitops interval=1m prune=true
 
 info "  ✓ Flux GitOps configuration created."

@@ -1,0 +1,167 @@
+# =============================================================================
+# .github/workflows/ci.yml — Build, push, and update GitOps manifests
+#
+# Trigger: push to master branch
+#
+# Flow:
+#   1. Checkout code
+#   2. Compute IMAGE_TAG from the short git SHA (7 chars)
+#   3. Build the Docker image tagged ghcr.io/<owner>/arc-demo-app:<sha>
+#   4. Log in to ghcr.io using GITHUB_TOKEN (no extra secret needed for push)
+#   5. Push the image to ghcr.io
+#   6. Patch deployment.yaml with the new image tag using sed
+#   7. Commit the updated manifest back to master
+#   8. Push using ARC_DEMO_PAT (needs contents:write — GITHUB_TOKEN can't push
+#      to protected branches or trigger downstream workflow runs)
+#
+# Why ARC_DEMO_PAT for the git push (not GITHUB_TOKEN)?
+#   GITHUB_TOKEN pushes are explicitly blocked from triggering new workflow runs
+#   to prevent infinite CI loops. Since our commit message includes [skip ci],
+#   either token would prevent a re-trigger — but using ARC_DEMO_PAT also works
+#   in repos with branch protection rules that require a non-Actions identity.
+# =============================================================================
+
+name: CI — Build, Push, Update Manifests
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-push-update:
+    name: Build image and update GitOps manifest
+    runs-on: ubuntu-latest
+
+    # Permissions for GITHUB_TOKEN: read code, write packages (ghcr.io push)
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history so git log and git rev-parse work correctly.
+          fetch-depth: 0
+          # Use ARC_DEMO_PAT for checkout so that the subsequent git push step
+          # (which uses the same credential) has write access to main.
+          token: ${{ secrets.ARC_DEMO_PAT }}
+
+      # ── 2. Compute image tag ─────────────────────────────────────────────
+      # Use the 7-character short SHA as the image tag. This gives us:
+      #   - Traceability: any running pod's image tag maps to an exact commit
+      #   - Uniqueness: no tag collisions across builds
+      #   - Demo clarity: short enough to display on the status page
+      - name: Set image tag from git SHA
+        id: vars
+        run: |
+          SHORT_SHA=$(git rev-parse --short=7 HEAD)
+          echo "IMAGE_TAG=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_TAG is: ${SHORT_SHA}"
+
+      # ── 3. Log in to GitHub Container Registry ───────────────────────────
+      # GITHUB_TOKEN has packages:write permission (granted above). No
+      # additional secrets needed for image push.
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 4. Build Docker image ────────────────────────────────────────────
+      # Tags the image with both the short SHA (permanent, traceable) and
+      # "latest" (convenience for local dev — Flux always uses the SHA tag).
+      - name: Build Docker image
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/arc-demo-app"
+          TAG="${{ steps.vars.outputs.IMAGE_TAG }}"
+          docker build \
+            --tag "${IMAGE}:${TAG}" \
+            --tag "${IMAGE}:latest" \
+            .
+          echo "Built: ${IMAGE}:${TAG}"
+
+      # ── 5. Push image to ghcr.io ─────────────────────────────────────────
+      - name: Push Docker image
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/arc-demo-app"
+          TAG="${{ steps.vars.outputs.IMAGE_TAG }}"
+          docker push "${IMAGE}:${TAG}"
+          docker push "${IMAGE}:latest"
+          echo "Pushed: ${IMAGE}:${TAG}"
+
+      # ── 6. Update deployment.yaml with new image tag ─────────────────────
+      # sed replaces the image line in deployment.yaml with the new SHA tag.
+      # We target the specific "ghcr.io/OWNER/arc-demo-app:" prefix so the
+      # substitution is precise and won't accidentally match unrelated lines.
+      #
+      # Also updates APP_VERSION env var so the running app displays the
+      # correct version string on its status page.
+      #
+      # Why sed instead of Flux Image Automation?
+      #   Flux Image Automation requires image reflector + automation controllers
+      #   plus marker comments in YAML. A single sed line is simpler, transparent
+      #   on stage, and easier to explain to an audience.
+      - name: Update image tag in deployment.yaml
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/arc-demo-app"
+          TAG="${{ steps.vars.outputs.IMAGE_TAG }}"
+          MANIFEST="gitops/demo-app/deployment.yaml"
+
+          # Replace the image tag on the image: line
+          sed -i "s|image: ${IMAGE}:.*|image: ${IMAGE}:${TAG}|g" "${MANIFEST}"
+
+          # Update APP_VERSION env var value to match the new tag
+          # Uses a two-line pattern match: find the APP_VERSION name line,
+          # then replace the value on the next line.
+          sed -i "/name: APP_VERSION/{n; s|value: .*|value: \"${TAG}\"|}" "${MANIFEST}"
+
+          echo "Updated ${MANIFEST} → ${IMAGE}:${TAG}"
+          grep "image:" "${MANIFEST}"
+
+      # ── 7. Commit and push updated manifest ──────────────────────────────
+      # [skip ci] in the commit message is CRITICAL. Without it, this push
+      # would trigger the CI workflow again, creating an infinite loop:
+      #   push → CI runs → commits manifest → push → CI runs → ...
+      #
+      # GitHub Actions respects [skip ci] (and [ci skip]) as a convention to
+      # suppress workflow triggers on automated commits.
+      #
+      # We also check if there are actual changes before committing — if the
+      # same commit is somehow pushed twice, git diff will be empty and we
+      # skip the commit/push to keep the history clean.
+      - name: Commit updated manifest
+        run: |
+          TAG="${{ steps.vars.outputs.IMAGE_TAG }}"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add gitops/demo-app/deployment.yaml
+
+          if git diff --cached --quiet; then
+            echo "No changes to deployment.yaml — skipping commit."
+          else
+            git commit -m "ci: update image tag to ${TAG} [skip ci]"
+            echo "Committed manifest update for ${TAG}"
+          fi
+
+      # ── 8. Push manifest commit back to main ─────────────────────────────
+      # ARC_DEMO_PAT must have 'contents: write' scope on this repository.
+      # Set it in: Settings → Secrets and variables → Actions → New repository secret
+      #
+      # We use the PAT (not GITHUB_TOKEN) here because:
+      #   1. Some repo configurations block GITHUB_TOKEN from pushing to main
+      #   2. The PAT identity makes automated commits attributable and auditable
+      - name: Push manifest update to master
+        run: |
+          # Only push if there's a new commit (the previous step may have skipped)
+          if git log origin/master..HEAD --oneline | grep -q .; then
+            git push origin master
+            echo "Manifest update pushed to main."
+          else
+            echo "Nothing to push."
+          fi

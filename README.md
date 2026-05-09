@@ -38,13 +38,13 @@ bash scripts/verify-deployment.sh
 
 ### What Happens
 
-- **Step 1** creates a Standard_B2s Linux VM (Ubuntu 22.04) and installs K3s remotely via Azure VM run-command. K3s is running within ~8 minutes.
+- **Step 1** creates a Standard_D2s_v3 Linux VM (Ubuntu 22.04) and installs K3s remotely via Azure VM run-command. K3s is running within ~8 minutes.
 - **Step 2** connects the cluster to Azure Arc and deploys Flux. Kubeconfig is copied locally with the VM's public IP patched in.
 - **Step 3** checks that Flux is reconciling, pods are running, and the app is reachable.
 
 ### Cost & Cleanup
 
-The VM runs at approximately **$0.10/hour** (Standard_B2s). After your demo:
+The VM runs at approximately **$0.10/hour.12/hour** (Standard_D2s_v3). After your demo:
 ```bash
 bash scripts/teardown.sh
 ```
@@ -102,8 +102,8 @@ az extension add --name k8s-configuration
 ### On-Premises Environment
 
 **Option A: Azure VM (Recommended for demos without hardware)**
-- Run `bash scripts/provision-demo-vm.sh` to automatically create and provision a Standard_B2s Linux VM with K3s
-- Takes ~8 minutes; VM costs ~$0.10/hour
+- Run `bash scripts/provision-demo-vm.sh` to automatically create and provision a Standard_D2s_v3 Linux VM with K3s
+- Takes ~8 minutes; VM costs ~$0.10/hour.12/hour
 
 **Option B: Physical on-prem machine or self-managed VM**
 - **Linux machine** (Ubuntu 22.04+ recommended) to run K3s
