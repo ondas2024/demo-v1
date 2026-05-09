@@ -2,8 +2,8 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY src/package.json ./
-RUN npm ci --production
+COPY src/package.json src/package-lock.json* ./
+RUN npm install --omit=dev
 
 COPY src/ ./
 
