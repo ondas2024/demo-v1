@@ -149,19 +149,20 @@ jobs:
             echo "Committed manifest update for ${TAG}"
           fi
 
-      # ── 8. Push manifest commit back to main ─────────────────────────────
-      # ARC_DEMO_PAT must have 'contents: write' scope on this repository.
-      # Set it in: Settings → Secrets and variables → Actions → New repository secret
-      #
-      # We use the PAT (not GITHUB_TOKEN) here because:
-      #   1. Some repo configurations block GITHUB_TOKEN from pushing to main
-      #   2. The PAT identity makes automated commits attributable and auditable
+      # ── 8. Push manifest commit back to master ───────────────────────────
+      # Uses GITHUB_TOKEN with an explicit remote URL so the bot identity can
+      # push. Requires "Read and write permissions" under:
+      #   Settings → Actions → General → Workflow permissions
       - name: Push manifest update to master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Configure authenticated remote URL for push
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
           # Only push if there's a new commit (the previous step may have skipped)
           if git log origin/master..HEAD --oneline | grep -q .; then
             git push origin master
-            echo "Manifest update pushed to main."
+            echo "Manifest update pushed to master."
           else
             echo "Nothing to push."
           fi
