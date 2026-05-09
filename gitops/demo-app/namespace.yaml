@@ -1,0 +1,21 @@
+# =============================================================================
+# gitops/demo-app/namespace.yaml — Kubernetes Namespace: arc-demo
+#
+# All demo app resources (Deployment, Service) live in this namespace.
+# Keeping them in a dedicated namespace makes cleanup trivial (kubectl delete
+# namespace arc-demo removes everything) and keeps the demo isolated from
+# system namespaces.
+#
+# Flux creates this before the Deployment and Service because it processes
+# Namespace resources first in the reconciliation order.
+# =============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arc-demo
+  labels:
+    # Label the namespace so it's easy to identify in kubectl output
+    # and Azure Portal workload views.
+    app.kubernetes.io/managed-by: flux
+    app.kubernetes.io/part-of: arc-demo

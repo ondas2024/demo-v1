@@ -1,0 +1,21 @@
+# =============================================================================
+# gitops/kustomization.yaml — Flux Kustomization root
+#
+# This is the entry point for Flux's reconciliation loop. Flux watches this
+# directory (as configured in setup-arc.sh via az k8s-configuration flux create
+# --kustomization path=./gitops) and applies everything under ./demo-app.
+#
+# prune: true — if a resource is removed from the repo, Flux removes it from
+# the cluster. This gives us clean demo resets: pull a manifest, push, and the
+# Kubernetes resource is gone within one reconciliation interval (~60s).
+# =============================================================================
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Apply all manifests in the demo-app subdirectory.
+# Order of application: Flux applies namespace first automatically when it
+# detects a Namespace resource, ensuring the namespace exists before the
+# Deployment and Service that reference it.
+resources:
+  - ./demo-app

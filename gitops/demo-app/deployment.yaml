@@ -1,0 +1,95 @@
+# =============================================================================
+# gitops/demo-app/deployment.yaml — Demo app Deployment
+#
+# WARNING: The image tag on line ~46 is updated automatically by the CI pipeline
+# (ci.yml) using `sed`. Do not manually edit the image tag — it will be
+# overwritten on the next push to main.
+#
+# Image format: ghcr.io/<owner>/arc-demo-app:<7-char-git-sha>
+# The OWNER placeholder is replaced by the GitHub repository owner at runtime.
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arc-demo-app
+  namespace: arc-demo
+  labels:
+    app: arc-demo-app
+    app.kubernetes.io/managed-by: flux
+    app.kubernetes.io/part-of: arc-demo
+spec:
+  # Single replica is intentional for this demo. Adding replicas would require
+  # a LoadBalancer or proper Ingress, which is out of scope. One pod makes the
+  # hostname display on the status page unambiguous (always the same pod).
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: arc-demo-app
+
+  template:
+    metadata:
+      labels:
+        app: arc-demo-app
+    spec:
+      containers:
+        - name: arc-demo-app
+          # CI updates this tag to the 7-char git SHA on every push to main.
+          # The placeholder "latest" is only used before the first CI run.
+          image: ghcr.io/OWNER/arc-demo-app:latest
+
+          ports:
+            - containerPort: 3000
+              protocol: TCP
+
+          # ── Liveness probe ───────────────────────────────────────────────
+          # Kubernetes restarts the container if /health stops responding.
+          # The app serves a simple 200 OK from this endpoint (see src/server.js).
+          # initialDelaySeconds: give the Node.js process time to start up.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+
+          # ── Readiness probe ──────────────────────────────────────────────
+          # Reuse the same health endpoint. The pod won't receive Service
+          # traffic until it passes readiness. This prevents routing to a pod
+          # that is still starting up during a rollout.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+          # ── Environment variables ────────────────────────────────────────
+          env:
+            # APP_VERSION: surface the running image tag in the web UI.
+            # fieldRef on image tag is not supported in core Kubernetes, so we
+            # hardcode "latest" here as the initial placeholder. The CI workflow
+            # updates both the image tag AND this value via sed when it patches
+            # the deployment manifest.
+            - name: APP_VERSION
+              value: "latest"
+
+            # BANNER_MESSAGE: the visible string the presenter changes to
+            # demonstrate the GitOps flow. Edit this value, push to main,
+            # and the audience sees the new message appear on the app page.
+            - name: BANNER_MESSAGE
+              value: "Hello from Azure Arc!"
+
+          # ── Resource limits ──────────────────────────────────────────────
+          # Sized for a demo workload on a single-node K3s cluster. These limits
+          # prevent the demo app from starving the Arc agent or Flux controllers
+          # if something goes wrong.
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"

@@ -1,0 +1,41 @@
+# =============================================================================
+# gitops/demo-app/service.yaml — NodePort Service for browser access
+#
+# Exposes the demo app at http://<node-ip>:30080 so the presenter can open it
+# in a browser without needing an Ingress controller, LoadBalancer, or TLS
+# setup — none of which are the point of this demo.
+#
+# Why NodePort 30080?
+#   - Port 30080 is within the Kubernetes default NodePort range (30000–32767)
+#   - It's easy to remember and type during a live demo
+#   - It avoids conflict with common system ports (80, 443, 8080, 8443)
+#   - The presenter bookmarks http://<node-ip>:30080 before the demo starts
+# =============================================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: arc-demo-app
+  namespace: arc-demo
+  labels:
+    app: arc-demo-app
+    app.kubernetes.io/managed-by: flux
+    app.kubernetes.io/part-of: arc-demo
+spec:
+  type: NodePort
+
+  selector:
+    # Must match the pod labels in deployment.yaml
+    app: arc-demo-app
+
+  ports:
+    - name: http
+      protocol: TCP
+      # Port: the Service's cluster-internal port (what other pods would use)
+      port: 3000
+      # targetPort: the container port defined in the Deployment
+      targetPort: 3000
+      # nodePort: the external port exposed on the node's IP address.
+      # Fixed value ensures the presenter's browser bookmark never breaks
+      # across pod restarts or redeployments.
+      nodePort: 30080
