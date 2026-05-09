@@ -26,7 +26,7 @@ name: CI — Build, Push, Update Manifests
 on:
   push:
     branches:
-      - main
+      - master
 
 jobs:
   build-push-update:
