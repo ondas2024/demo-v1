@@ -47,7 +47,7 @@ jobs:
           fetch-depth: 0
           # Use ARC_DEMO_PAT for checkout so that the subsequent git push step
           # (which uses the same credential) has write access to main.
-          token: ${{ secrets.ARC_DEMO_PAT }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       # ── 2. Compute image tag ─────────────────────────────────────────────
       # Use the 7-character short SHA as the image tag. This gives us:
